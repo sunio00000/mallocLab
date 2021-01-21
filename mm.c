@@ -35,13 +35,14 @@ team_t team = {
         ""
 };
 
+//! ===================================================== 님에게 배운 빨강 코멘트 시작...! ================================================================//
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
 #define ALIGN(p) (((size_t)(p) + (ALIGNMENT-1)) & ~0x7)
 #define SIZEMASK (~0x7)
 #define PACK(size, alloc) ((size)|(alloc))
-#define getSize(x) ((x)->size & SIZEMASK) // x의 사이즈를 구한다.
+#define getSize(x) ((x)->size & SIZEMASK) // x의 사이즈를 구한다.   //! 이 매크로는 어떻게 쓰였나유??
 #define WSIZE 4 //word의 크기
 #define DSIZE 8 // double word의 크기를 정하고 있다
 #define CHUNKSIZE (1<<12) // 초기 힙 사이즈를 설정한다.
@@ -146,6 +147,7 @@ static void *extend_heap(size_t words) {
     size_t size;
 
     //요청한 크기를 인접 2워드의 배수로 반올림 하며, 그 후에 메모리 시스템으로 부터 추가적인 힙 공간 요청
+    //! extend_heap의 인자로 words가 넘어올 때 "size/WSIZE"로 넘어오기 때문에 2워드의 배수로 반올림한다는 표현이 좀 더 명확한 듯!
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
     if ((bp = mem_sbrk(size)) == -1)
         return NULL;
@@ -157,10 +159,13 @@ static void *extend_heap(size_t words) {
 }
 static void place(void *bp, size_t asize) {
     size_t csize = GET_SIZE(HDRP(bp));
+
+    //! csize - asize 가 16바이트 이상이면 alloc 후에도 남은 블록을 가용 블록으로 만들 수 있기 때문에 분할
+    //! 근데 사실 Implicit에서는 8바이트만 되어도 헤더풋터 넣을 수 있어서 괜찮을 것 같은데 비효율적이라 그런 건가 몰겠어...
     if ((csize - asize) >= (2 * DSIZE)) {
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
-        bp = NEXT_BLKP(bp); //다음 블록으로 이동
+        bp = NEXT_BLKP(bp); //다음 블록으로 이동    //! = Alloc 후 분할되어 남은 블록으로 이동
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
     } else {
@@ -193,7 +198,7 @@ static void *coalesce(void *bp) {
         //case2  이전 블럭만 할당된 상태
         //다음블럭과 병합한 뒤 bp return
     else if (prev_alloc && !next_alloc) {
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // 다음 블럭의 사이즈를 구함
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // 다음 블럭의 사이즈를 구함     //! 정확히는 현재 블록에 다음 블록 사이즈를 더해서 병합스
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
     }
@@ -221,6 +226,11 @@ static void *coalesce(void *bp) {
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
+
+//! 리얼록은 좀 더 개선할 수 있는 부분이 있는데 기본 코드는 size가 어떻든 간에 무조건 새로운 가용 블록을 찾아서 재할당하는 건데
+//! 앞이나 뒤에 충분한 size의 가용 블록이 있으면 먼저 병합해 보는 시도를 하면 메모리이용도를 좀 더 높일 수 있더라고
+//! 코드는 거진 10몇줄 정도 늘어나는데 그래봤자 3점 정도 오를거야
+
 void *mm_realloc(void *ptr, size_t size) {
     void *oldptr = ptr;
     void *newptr;
@@ -229,7 +239,7 @@ void *mm_realloc(void *ptr, size_t size) {
     newptr = mm_malloc(size);
     if (newptr == NULL)
         return NULL;
-    copySize = *(size_t *) ((char *) oldptr - WSIZE);
+    copySize = *(size_t *) ((char *) oldptr - WSIZE);       //! 요 부분은 GET_SIZE(HDRP(oldptr))과 같은 표현이야 좀 더 간지랄까
     if (size < copySize)
         copySize = size;
     memcpy(newptr, oldptr, copySize);
